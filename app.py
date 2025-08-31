@@ -197,7 +197,7 @@ def get_weather_data():
         return {'error': error_msg}
     except Exception as e:
         error_msg = f"Error processing weather data: {str(e)}"
-        print(f"❌ {error_msg})
+        print(f"❌ {error_msg}")
         return {'error': error_msg}
 
 def log_weather_data(weather_data):
