@@ -26,6 +26,10 @@ weather_cache = None
 weather_last_updated = None
 CACHE_DURATION = 3600  # Cache weather data for 1 hour
 
+# Bareilly, Uttar Pradesh, India coordinates
+BAREILLY_LAT = 28.3640
+BAREILLY_LON = 79.4151
+
 def safe_float(value, default=None):
     """Safely convert value to float, handling NaN and None"""
     if value is None or pd.isna(value) or math.isnan(value):
@@ -66,14 +70,14 @@ def get_weather_data():
     
     try:
         print("🌤️ Fetching fresh weather data from Meteostat...")
+        print(f"📍 Location: Bareilly, India ({BAREILLY_LAT}, {BAREILLY_LON})")
         
-        # Set your location coordinates (latitude, longitude)
-        # Example: New York City coordinates
-        location = Point(28.336485,79.402418 )
+        # Set Bareilly, India coordinates
+        location = Point(BAREILLY_LAT, BAREILLY_LON)
         
         # Get current date and time
         now = datetime.now()
-        start = now - timedelta(days=1)  # Get data from yesterday to today
+        start = now - timedelta(days=2)  # Get more data to ensure availability
         end = now + timedelta(days=6)    # Get data for next 5 days
         
         # Get hourly data for current conditions
@@ -85,11 +89,25 @@ def get_weather_data():
         daily_df = daily_data.fetch()
         
         # Check if dataframes are empty
-        if hourly_df.empty or daily_df.empty:
-            return {'error': 'No weather data available from Meteostat'}
+        if hourly_df.empty:
+            print("❌ No hourly data available from Meteostat")
+            return {'error': 'No hourly weather data available from Meteostat'}
         
-        # Extract current weather (most recent hour)
-        current_hour = hourly_df.iloc[-1]
+        if daily_df.empty:
+            print("❌ No daily data available from Meteostat")
+            return {'error': 'No daily forecast data available from Meteostat'}
+        
+        # Extract current weather (most recent hour with valid data)
+        current_hour = None
+        for i in range(1, len(hourly_df) + 1):
+            candidate = hourly_df.iloc[-i]
+            if not pd.isna(candidate.get('temp')):  # Check if temperature data exists
+                current_hour = candidate
+                break
+        
+        if current_hour is None:
+            print("❌ No valid current weather data found")
+            return {'error': 'No valid current weather data available'}
         
         # Prepare current weather data with safe float conversion
         current_weather = {
@@ -134,7 +152,7 @@ def get_weather_data():
         weather_data = {
             'current': current_weather,
             'forecast': forecast,
-            'location': {'lat': 28.336485, 'lon': 79.402418, 'name': 'Bareilly'},
+            'location': {'lat': BAREILLY_LAT, 'lon': BAREILLY_LON, 'name': 'Bareilly, India'},
             'last_updated': datetime.now().isoformat()
         }
         
@@ -142,11 +160,13 @@ def get_weather_data():
         weather_cache = weather_data
         weather_last_updated = datetime.now()
         
+        print("✅ Weather data fetched successfully!")
         return weather_data
         
     except Exception as e:
-        print(f"❌ Error fetching weather data: {str(e)}")
-        return {'error': str(e)}
+        error_msg = f"Error fetching weather data: {str(e)}"
+        print(f"❌ {error_msg}")
+        return {'error': error_msg}
 
 @app.route('/esp32-data', methods=['POST'])
 def receive_data():
@@ -246,6 +266,43 @@ def get_weather():
         print(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
 
+@app.route('/test-meteo', methods=['GET'])
+def test_meteo():
+    """
+    Test endpoint to check Meteostat data availability
+    """
+    try:
+        print("🧪 Testing Meteostat API for Bareilly...")
+        
+        location = Point(BAREILLY_LAT, BAREILLY_LON)
+        now = datetime.now()
+        start = now - timedelta(days=2)
+        end = now
+        
+        # Test hourly data
+        hourly_data = Hourly(location, start, end)
+        hourly_df = hourly_data.fetch()
+        
+        # Test daily data
+        daily_data = Daily(location, start, now + timedelta(days=5))
+        daily_df = daily_data.fetch()
+        
+        result = {
+            "hourly_available": not hourly_df.empty,
+            "daily_available": not daily_df.empty,
+            "hourly_shape": hourly_df.shape if not hourly_df.empty else "Empty",
+            "daily_shape": daily_df.shape if not daily_df.empty else "Empty",
+            "location": {"lat": BAREILLY_LAT, "lon": BAREILLY_LON, "name": "Bareilly, India"}
+        }
+        
+        print(f"✅ Test result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        error_msg = f"Test failed: {str(e)}"
+        print(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
 @app.route('/combined-data', methods=['GET'])
 def get_combined_data():
     """
@@ -282,7 +339,7 @@ def get_combined_data():
         
     except Exception as e:
         error_msg = f"Error retrieving combined data: {str(e)}"
-        print(f"❌ {error_msg}")
+        print(f"❌ {error_msg})
         return jsonify({"error": error_msg}), 500
 
 @app.route('/')
@@ -292,7 +349,8 @@ def home():
     Endpoints:<br>
     - POST /esp32-data (Receive ESP32 data)<br>
     - GET /weather (Get weather data)<br>
-    - GET /combined-data (Get both ESP32 and weather data)
+    - GET /combined-data (Get both ESP32 and weather data)<br>
+    - GET /test-meteo (Test Meteostat API)
     """
 
 if __name__ == '__main__':
