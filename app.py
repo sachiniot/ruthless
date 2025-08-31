@@ -35,6 +35,22 @@ def safe_float(value, default=None):
     except (ValueError, TypeError):
         return default
 
+def log_weather_data(weather_data):
+    """Helper function to log weather data"""
+    if 'error' in weather_data:
+        print(f"❌ Weather error: {weather_data['error']}")
+        return
+    
+    current = weather_data['current']
+    print("🌤️ CURRENT WEATHER:")
+    print(f"   Temperature: {current.get('temperature', 'N/A')}°C")
+    print(f"   Dew Point: {current.get('dew_point', 'N/A')}°C")
+    print(f"   Humidity: {current.get('humidity', 'N/A')}%")
+    print(f"   Cloud Cover: {current.get('cloud_cover', 'N/A')}%")
+    print(f"   Wind Speed: {current.get('wind_speed', 'N/A')} km/h")
+    print(f"   Pressure: {current.get('pressure', 'N/A')} hPa")
+    print(f"   Precipitation: {current.get('precipitation', 'N/A')} mm")
+
 def get_weather_data():
     """
     Fetch current and 5-day forecast weather data using Meteostat
@@ -169,6 +185,22 @@ def receive_data():
         print(f"Battery: {battery_voltage} V, {battery_percentage} %")
         print(f"Light Intensity: {light_intensity} Lux")
 
+        # 🔥 AUTO-FETCH WEATHER DATA WHEN ESP32 SENDS DATA
+        print("\n🌤️ Auto-fetching weather data...")
+        weather_data = get_weather_data()
+        
+        if 'error' in weather_data:
+            print(f"❌ Weather fetch failed: {weather_data['error']}")
+        else:
+            current_weather = weather_data['current']
+            print("✅ Current Weather:")
+            print(f"   Temperature: {current_weather.get('temperature', 'N/A')}°C")
+            print(f"   Humidity: {current_weather.get('humidity', 'N/A')}%")
+            print(f"   Wind Speed: {current_weather.get('wind_speed', 'N/A')} km/h")
+            print(f"   Cloud Cover: {current_weather.get('cloud_cover', 'N/A')}%")
+        
+        print("----------------------------------------")
+
         return jsonify({"status": "success", "message": "Data received"})
 
     except Exception as e:
@@ -183,7 +215,6 @@ def get_weather():
     try:
         weather_data = get_weather_data()
         
-        # Print the weather information received
         print("\n🌤️ Weather Information Retrieved:")
         print("=" * 50)
         
@@ -191,16 +222,8 @@ def get_weather():
             print(f"Error: {weather_data['error']}")
             return jsonify(weather_data), 500
         
-        # Print current weather
-        current = weather_data['current']
-        print("CURRENT WEATHER:")
-        print(f"Temperature: {current.get('temperature', 'N/A')}°C")
-        print(f"Dew Point: {current.get('dew_point', 'N/A')}°C")
-        print(f"Humidity: {current.get('humidity', 'N/A')}%")
-        print(f"Cloud Cover: {current.get('cloud_cover', 'N/A')}%")
-        print(f"Wind Speed: {current.get('wind_speed', 'N/A')} km/h")
-        print(f"Pressure: {current.get('pressure', 'N/A')} hPa")
-        print(f"Precipitation: {current.get('precipitation', 'N/A')} mm")
+        # Use the helper function
+        log_weather_data(weather_data)
         
         # Print forecast
         print("\n5-DAY FORECAST:")
