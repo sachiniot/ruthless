@@ -69,7 +69,7 @@ def get_weather_data():
         
         # Set your location coordinates (latitude, longitude)
         # Example: New York City coordinates
-        location = Point(40.7128, -74.0060)
+        location = Point(28.336485,79.402418 )
         
         # Get current date and time
         now = datetime.now()
