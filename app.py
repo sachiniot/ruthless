@@ -163,5 +163,11 @@ def test_open_meteo():
         print(f"❌ {error_msg}")
         return jsonify({"success": False, "error": error_msg})
 
+# ... [your existing code] ...
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+else:
+    # This is for gunicorn deployment
+    application = app
