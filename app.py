@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 import requests
 import math
+import os  # Added for environment variables
 
 app = Flask(__name__)
 
@@ -31,6 +32,86 @@ BAREILLY_LON = 79.4151
 
 # Open-Meteo API (NO API KEY REQUIRED - global coverage)
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+@app.route('/')
+def home():
+    """Home endpoint with API information"""
+    return jsonify({
+        "message": "Solar Monitoring System API",
+        "endpoints": {
+            "POST /esp32-data": "Receive data from ESP32",
+            "GET /weather": "Get weather data",
+            "GET /combined-data": "Get combined ESP32 and weather data",
+            "GET /test-open-meteo": "Test Open-Meteo API connection"
+        },
+        "status": "active"
+    })
+
+# ADD THIS MISSING ROUTE - ESP32 DATA ENDPOINT
+@app.route('/esp32-data', methods=['POST'])
+def receive_esp32_data():
+    """Receive data from ESP32 device"""
+    global box_temp, frequency, power_factor, voltage, current, power, energy
+    global solar_voltage, solar_current, solar_power, battery_percentage
+    global light_intensity, battery_voltage
+    
+    print("📨 Received POST request to /esp32-data")
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            print("❌ No JSON data received")
+            return jsonify({"error": "No JSON data received"}), 400
+        
+        print(f"✅ JSON data received: {data}")
+        
+        # Handle both camelCase and snake_case keys from ESP32
+        box_temp = data.get('box_temp') or data.get('BoxTemperature')
+        frequency = data.get('frequency') or data.get('Frequency')
+        power_factor = data.get('power_factor') or data.get('PowerFactor')
+        voltage = data.get('voltage') or data.get('Voltage')
+        current = data.get('current') or data.get('Current')
+        power = data.get('power') or data.get('Power')
+        energy = data.get('energy') or data.get('Energy')
+        solar_voltage = data.get('solar_voltage') or data.get('SolarVoltage')
+        solar_current = data.get('solar_current') or data.get('solarCurrent')
+        solar_power = data.get('solar_power') or data.get('solarPower')
+        battery_percentage = data.get('battery_percentage') or data.get('batteryPercentage')
+        light_intensity = data.get('light_intensity') or data.get('lightIntensity')
+        battery_voltage = data.get('battery_voltage') or data.get('batteryVoltage')
+        
+        print("✅ ESP32 data processed:")
+        print(f"   Box Temp: {box_temp}°C, Power: {power}W")
+        print(f"   Solar: {solar_power}W, Battery: {battery_percentage}%")
+        
+        return jsonify({
+            "message": "Data received successfully", 
+            "status": "ok",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        error_msg = f"Error processing ESP32 data: {str(e)}"
+        print(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+# ADD DEBUG ENDPOINT TO TEST SERVER
+@app.route('/debug', methods=['GET', 'POST'])
+def debug():
+    """Debug endpoint to check server status"""
+    if request.method == 'POST':
+        print("📨 Received POST data:", request.get_json())
+        return jsonify({"message": "POST received", "data": request.get_json()})
+    
+    return jsonify({
+        "status": "server is running",
+        "endpoints": {
+            "POST /esp32-data": "Receive ESP32 data",
+            "GET /weather": "Get weather data",
+            "GET /debug": "This debug endpoint"
+        }
+    })
 
 def get_weather_data():
     """
@@ -116,7 +197,7 @@ def get_weather_data():
         return {'error': error_msg}
     except Exception as e:
         error_msg = f"Error processing weather data: {str(e)}"
-        print(f"❌ {error_msg}")
+        print(f"❌ {error_msg})
         return {'error': error_msg}
 
 def log_weather_data(weather_data):
@@ -135,8 +216,48 @@ def log_weather_data(weather_data):
     print(f"   Precipitation: {current.get('precipitation', 'N/A')} mm")
     print(f"   Rain: {current.get('rain', 'N/A')} mm")
 
-# ... [KEEP ALL YOUR EXISTING ROUTES UNCHANGED] ...
-# /esp32-data, /weather, /combined-data, /test-meteo, / all remain the same
+@app.route('/weather', methods=['GET'])
+def weather():
+    """Get current weather and forecast"""
+    try:
+        weather_data = get_weather_data()
+        return jsonify(weather_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/combined-data', methods=['GET'])
+def combined_data():
+    """Get combined ESP32 data and weather data"""
+    try:
+        # Get ESP32 data
+        esp32_data = {
+            "box_temp": box_temp,
+            "frequency": frequency,
+            "power_factor": power_factor,
+            "voltage": voltage,
+            "current": current,
+            "power": power,
+            "energy": energy,
+            "solar_voltage": solar_voltage,
+            "solar_current": solar_current,
+            "solar_power": solar_power,
+            "battery_percentage": battery_percentage,
+            "light_intensity": light_intensity,
+            "battery_voltage": battery_voltage,
+            "esp32_last_updated": datetime.now().isoformat() if any([box_temp, power, solar_power]) else None
+        }
+        
+        # Get weather data
+        weather_data = get_weather_data()
+        
+        return jsonify({
+            "esp32_data": esp32_data,
+            "weather_data": weather_data,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/test-open-meteo', methods=['GET'])
 def test_open_meteo():
@@ -162,8 +283,6 @@ def test_open_meteo():
         error_msg = f"Open-Meteo test failed: {str(e)}"
         print(f"❌ {error_msg}")
         return jsonify({"success": False, "error": error_msg})
-
-# ... [your existing code] ...
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
