@@ -42,12 +42,12 @@ def home():
             "POST /esp32-data": "Receive data from ESP32",
             "GET /weather": "Get weather data",
             "GET /combined-data": "Get combined ESP32 and weather data",
-            "GET /test-open-meteo": "Test Open-Meteo API connection"
+            "GET /test-open-meteo": "Test Open-Meteo API connection",
+            "GET /test-params": "Check current parameter values"
         },
         "status": "active"
     })
 
-# ADD THIS MISSING ROUTE - ESP32 DATA ENDPOINT
 @app.route('/esp32-data', methods=['POST'])
 def receive_esp32_data():
     """Receive data from ESP32 device"""
@@ -96,7 +96,6 @@ def receive_esp32_data():
         print(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
 
-# ADD DEBUG ENDPOINT TO TEST SERVER
 @app.route('/debug', methods=['GET', 'POST'])
 def debug():
     """Debug endpoint to check server status"""
@@ -109,9 +108,11 @@ def debug():
         "endpoints": {
             "POST /esp32-data": "Receive ESP32 data",
             "GET /weather": "Get weather data",
-            "GET /debug": "This debug endpoint"
+            "GET /debug": "This debug endpoint",
+            "GET /test-params": "Check current parameters"
         }
     })
+
 @app.route('/test-params', methods=['GET'])
 def test_params():
     """Test endpoint to check current parameter values"""
@@ -126,17 +127,19 @@ def test_params():
         "last_updated": datetime.now().isoformat(),
         "status": "active" if any([box_temp, power, solar_power]) else "no_data_received"
     })
-def get_weather_data():
+
+def get_weather_data(force_refresh=False):
     """
     Fetch current and 7-day forecast weather data using Open-Meteo
     Returns: Dictionary with current weather and forecast
     """
     global weather_cache, weather_last_updated
     
-    # Check if cache is still valid
-    if weather_cache and weather_last_updated:
-        if (datetime.now() - weather_last_updated).total_seconds() < CACHE_DURATION:
-            print("🌤️ Using cached weather data")
+    # Check if cache is still valid (unless force refresh)
+    if not force_refresh and weather_cache and weather_last_updated:
+        cache_age = (datetime.now() - weather_last_updated).total_seconds()
+        if cache_age < CACHE_DURATION:
+            print(f"🌤️ Using cached weather data (age: {int(cache_age)}s)")
             return weather_cache
     
     try:
@@ -155,6 +158,7 @@ def get_weather_data():
         }
         
         # Make API request
+        print("🌐 Making API request to Open-Meteo...")
         response = requests.get(OPEN_METEO_URL, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -202,6 +206,12 @@ def get_weather_data():
         weather_last_updated = datetime.now()
         
         print("✅ Weather data fetched successfully from Open-Meteo!")
+        print(f"🌡️ Current Temperature: {current_weather['temperature']}°C")
+        print(f"💧 Humidity: {current_weather['humidity']}%")
+        print(f"☁️ Cloud Cover: {current_weather['cloud_cover']}%")
+        print(f"💨 Wind Speed: {current_weather['wind_speed']} km/h")
+        print(f"🌧️ Precipitation: {current_weather['precipitation']} mm")
+        
         return weather_data
         
     except requests.exceptions.RequestException as e:
@@ -220,7 +230,7 @@ def log_weather_data(weather_data):
         return
     
     current = weather_data['current']
-    print("🌤️ CURRENT WEATHER:")
+    print("🌤️ CURRENT WEATHER DETAILS:")
     print(f"   Temperature: {current.get('temperature', 'N/A')}°C")
     print(f"   Feels like: {current.get('feels_like', 'N/A')}°C")
     print(f"   Humidity: {current.get('humidity', 'N/A')}%")
@@ -233,10 +243,30 @@ def log_weather_data(weather_data):
 def weather():
     """Get current weather and forecast"""
     try:
-        weather_data = get_weather_data()
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        if force_refresh:
+            print("🔄 Force refresh requested - bypassing cache")
+        
+        weather_data = get_weather_data(force_refresh=force_refresh)
+        
+        # Log weather details
+        log_weather_data(weather_data)
+        
+        # Add cache info to response
+        if 'error' not in weather_data:
+            cache_info = {
+                'cache_used': not force_refresh and weather_cache is not None and 
+                             (datetime.now() - weather_last_updated).total_seconds() < CACHE_DURATION,
+                'cache_age_seconds': (datetime.now() - weather_last_updated).total_seconds() if weather_last_updated else None
+            }
+            weather_data.update(cache_info)
+        
         return jsonify(weather_data)
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_msg = f"Weather endpoint error: {str(e)}"
+        print(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
 
 @app.route('/combined-data', methods=['GET'])
 def combined_data():
@@ -263,6 +293,12 @@ def combined_data():
         # Get weather data
         weather_data = get_weather_data()
         
+        # Log both data sources
+        print("📊 COMBINED DATA REQUEST:")
+        print(f"   ESP32 - Power: {power}W, Solar: {solar_power}W, Battery: {battery_percentage}%")
+        if 'current' in weather_data and 'error' not in weather_data:
+            print(f"   Weather - Temp: {weather_data['current'].get('temperature')}°C, Humidity: {weather_data['current'].get('humidity')}%")
+        
         return jsonify({
             "esp32_data": esp32_data,
             "weather_data": weather_data,
@@ -270,7 +306,9 @@ def combined_data():
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_msg = f"Combined data error: {str(e)}"
+        print(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
 
 @app.route('/test-open-meteo', methods=['GET'])
 def test_open_meteo():
@@ -282,8 +320,10 @@ def test_open_meteo():
         weather_data = get_weather_data()
         
         if 'error' in weather_data:
+            print(f"❌ Open-Meteo test failed: {weather_data['error']}")
             return jsonify({"success": False, "error": weather_data['error']})
         
+        print("✅ Open-Meteo API test successful!")
         return jsonify({
             "success": True,
             "has_data": True,
