@@ -9,9 +9,9 @@ class Config:
     DEBUG = True
     
     # Weather configuration
-    LATITUDE = 40.7128  # Replace with your actual latitude
-    LONGITUDE = -74.0060  # Replace with your actual longitude
-    LOCATION_NAME = "Your Location"  # Replace with your location name
+    LATITUDE = 28.336485  # Replace with your actual latitude
+    LONGITUDE = 79.402418  # Replace with your actual longitude
+    LOCATION_NAME = "Bareilly,Uttar pradesh,India"  # Replace with your location name
     
     # Cache configuration
     WEATHER_CACHE_DURATION = 3600  # 1 hour in seconds
