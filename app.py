@@ -112,7 +112,20 @@ def debug():
             "GET /debug": "This debug endpoint"
         }
     })
-
+@app.route('/test-params', methods=['GET'])
+def test_params():
+    """Test endpoint to check current parameter values"""
+    return jsonify({
+        "box_temp": box_temp,
+        "power": power,
+        "solar_power": solar_power,
+        "battery_percentage": battery_percentage,
+        "light_intensity": light_intensity,
+        "voltage": voltage,
+        "current": current,
+        "last_updated": datetime.now().isoformat(),
+        "status": "active" if any([box_temp, power, solar_power]) else "no_data_received"
+    })
 def get_weather_data():
     """
     Fetch current and 7-day forecast weather data using Open-Meteo
