@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from meteostat import Point, Daily, Hourly
 import pandas as pd
+import math
 
 app = Flask(__name__)
 
@@ -24,6 +25,15 @@ battery_voltage = None
 weather_cache = None
 weather_last_updated = None
 CACHE_DURATION = 3600  # Cache weather data for 1 hour
+
+def safe_float(value, default=None):
+    """Safely convert value to float, handling NaN and None"""
+    if value is None or pd.isna(value) or math.isnan(value):
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 def get_weather_data():
     """
@@ -58,23 +68,27 @@ def get_weather_data():
         daily_data = Daily(location, start, end)
         daily_df = daily_data.fetch()
         
+        # Check if dataframes are empty
+        if hourly_df.empty or daily_df.empty:
+            return {'error': 'No weather data available from Meteostat'}
+        
         # Extract current weather (most recent hour)
         current_hour = hourly_df.iloc[-1]
         
-        # Prepare current weather data
+        # Prepare current weather data with safe float conversion
         current_weather = {
-            'temperature': current_hour.get('temp'),
-            'dew_point': current_hour.get('dwpt'),
-            'humidity': current_hour.get('rhum'),
-            'cloud_cover': current_hour.get('coco'),
-            'wind_speed': current_hour.get('wspd'),
-            'wind_direction': current_hour.get('wdir'),
-            'pressure': current_hour.get('pres'),
-            'precipitation': current_hour.get('prcp'),
-            'timestamp': current_hour.name.isoformat()
+            'temperature': safe_float(current_hour.get('temp')),
+            'dew_point': safe_float(current_hour.get('dwpt')),
+            'humidity': safe_float(current_hour.get('rhum')),
+            'cloud_cover': safe_float(current_hour.get('coco')),
+            'wind_speed': safe_float(current_hour.get('wspd')),
+            'wind_direction': safe_float(current_hour.get('wdir')),
+            'pressure': safe_float(current_hour.get('pres')),
+            'precipitation': safe_float(current_hour.get('prcp')),
+            'timestamp': current_hour.name.isoformat() if hasattr(current_hour.name, 'isoformat') else str(current_hour.name)
         }
         
-        # Prepare 5-day forecast
+        # Prepare 5-day forecast with safe float conversion
         forecast = []
         for i in range(1, 6):  # Next 5 days
             forecast_date = now.date() + timedelta(days=i)
@@ -82,22 +96,29 @@ def get_weather_data():
                 day_data = daily_df.loc[forecast_date]
                 forecast.append({
                     'date': forecast_date.isoformat(),
-                    'temperature_avg': day_data.get('tavg'),
-                    'temperature_min': day_data.get('tmin'),
-                    'temperature_max': day_data.get('tmax'),
-                    'precipitation': day_data.get('prcp'),
-                    'snow_depth': day_data.get('snow'),
-                    'wind_speed_avg': day_data.get('wspd'),
-                    'pressure_avg': day_data.get('pres')
+                    'temperature_avg': safe_float(day_data.get('tavg')),
+                    'temperature_min': safe_float(day_data.get('tmin')),
+                    'temperature_max': safe_float(day_data.get('tmax')),
+                    'precipitation': safe_float(day_data.get('prcp')),
+                    'wind_speed_avg': safe_float(day_data.get('wspd')),
+                    'pressure_avg': safe_float(day_data.get('pres'))
                 })
-        
-        # Note: Meteostat doesn't provide direct air quality data
-        # You might need another source for air quality
+            else:
+                # Add placeholder for missing forecast days
+                forecast.append({
+                    'date': forecast_date.isoformat(),
+                    'temperature_avg': None,
+                    'temperature_min': None,
+                    'temperature_max': None,
+                    'precipitation': None,
+                    'wind_speed_avg': None,
+                    'pressure_avg': None
+                })
         
         weather_data = {
             'current': current_weather,
             'forecast': forecast,
-            'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'Your Location'},
+            'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'New York'},
             'last_updated': datetime.now().isoformat()
         }
         
