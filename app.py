@@ -134,7 +134,7 @@ def get_weather_data():
         weather_data = {
             'current': current_weather,
             'forecast': forecast,
-            'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'New York'},
+            'location': {'lat': 28.336485, 'lon': 79.402418, 'name': 'Bareilly'},
             'last_updated': datetime.now().isoformat()
         }
         
